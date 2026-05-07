@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Atomic Heart Snake - Final</title>
+    <style>
+        :root {
+            --atomic-orange: #ff4e00;
+            --atomic-dark-orange: #8a2a00;
+            --bg-color: #080808;
+            --panel-color: #1a1a1a;
+            --polymer-blue: #00f2ff;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--atomic-orange);
+            font-family: 'Segoe UI', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        #game-board {
+            width: 340px;
+            height: 340px;
+            background-color: var(--panel-color);
+            border: 2px solid #333;
+            position: relative;
+            box-shadow: 0 0 50px #000;
+            margin-bottom: 20px;
+        }
+
+        /* Звенья змейки */
+        .snake-segment {
+            width: 14px;
+            height: 14px;
+            position: absolute;
+            background-color: var(--atomic-orange);
+            border-radius: 50%;
+            box-shadow: 
+                0 0 0 2px var(--bg-color), 
+                0 0 0 4px var(--atomic-dark-orange),
+                0 0 10px rgba(255, 78, 0, 0.3);
+        }
+
+        /* Голова: Черная с оранжевыми точками и обводкой */
+        .snake-head {
+            background-color: #111;
+            z-index: 10;
+            box-shadow: 
+                0 0 0 2px var(--bg-color), 
+                0 0 0 4px var(--atomic-dark-orange),
+                0 0 15px rgba(255, 78, 0, 0.6);
+            border: 3px dotted var(--atomic-orange);
+            box-sizing: border-box;
+        }
+
+        /* Стоячая капля полимера */
+        #food {
+            width: 12px;
+            height: 16px; /* Чуть вытянута по вертикали */
+            position: absolute;
+            background-color: var(--polymer-blue);
+            /* Форма капли: снизу округлая, сверху острая */
+            border-radius: 50% 50% 50% 50% / 40% 40% 60% 60%;
+            border-top-left-radius: 50% 100%;
+            border-top-right-radius: 50% 100%;
+            box-shadow: 0 0 15px var(--polymer-blue), inset -1px -2px 4px rgba(255,255,255,0.7);
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(3, 70px);
+            gap: 15px;
+        }
+
+        .btn {
+            width: 70px;
+            height: 70px;
+            background: #111;
+            border: 1px solid #333;
+            color: var(--atomic-orange);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            border-radius: 50%;
+            user-select: none;
+        }
+
+        .btn:active {
+            background: #222;
+            transform: scale(0.95);
+        }
+
+        #up { grid-column: 2; }
+        #left { grid-column: 1; }
+        #down { grid-column: 2; }
+        #right { grid-column: 3; }
+        
+        .score-box {
+            font-size: 12px;
+            letter-spacing: 3px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="score-box">СИСТЕМА: БУРАВ | ПОЛИМЕР: <span id="score">0</span></div>
+
+    <div id="game-board"></div>
+
+    <div class="controls">
+        <div class="btn" id="up">▲</div>
+        <div class="btn" id="left">◀</div>
+        <div class="btn" id="down">▼</div>
+        <div class="btn" id="right">▶</div>
+    </div>
+
+    <script>
+        const board = document.getElementById('game-board');
+        const scoreEl = document.getElementById('score');
+        const cellSize = 17;
+        const gridSize = 20;
+        
+        let snake = [{x: 10, y: 10}, {x: 10, y: 11}, {x: 10, y: 12}];
+        let food = {x: 5, y: 5};
+        let dx = 0;
+        let dy = -1;
+        let score = 0;
+        let gameInterval;
+
+        function draw() {
+            board.innerHTML = '';
+            
+            const foodEl = document.createElement('div');
+            foodEl.id = 'food';
+            // Центрируем каплю в клетке
+            foodEl.style.left = (food.x * cellSize + 2.5) + 'px';
+            foodEl.style.top = (food.y * cellSize + 0.5) + 'px';
+            board.appendChild(foodEl);
+
+            snake.forEach((part, index) => {
+                const seg = document.createElement('div');
+                seg.classList.add('snake-segment');
+                if (index === 0) seg.classList.add('snake-head');
+                seg.style.left = (part.x * cellSize + 1.5) + 'px';
+                seg.style.top = (part.y * cellSize + 1.5) + 'px';
+                board.appendChild(seg);
+            });
+        }
+
+        function placeFood() {
+            let newX, newY, overlap;
+            do {
+                overlap = false;
+                newX = Math.floor(Math.random() * gridSize);
+                newY = Math.floor(Math.random() * gridSize);
+                for (let s of snake) {
+                    if (s.x === newX && s.y === newY) overlap = true;
+                }
+            } while (overlap);
+            food = {x: newX, y: newY};
+        }
+
+        function update() {
+            const head = {x: snake[0].x + dx, y: snake[0].y + dy};
+            if (head.x < 0 || head.x >= gridSize || head.y < 0 || head.y >= gridSize) return gameOver();
+            for (let s of snake) if (s.x === head.x && s.y === head.y) return gameOver();
+
+            snake.unshift(head);
+            if (head.x === food.x && head.y === food.y) {
+                score++;
+                scoreEl.innerText = score;
+                placeFood();
+            } else {
+                snake.pop();
+            }
+            draw();
+        }
+
+        function gameOver() {
+            clearInterval(gameInterval);
+            alert("КРИТИЧЕСКИЙ СБОЙ СИСТЕМЫ. СОБРАНО: " + score);
+            location.reload();
+        }
+
+        const setDir = (nx, ny) => {
+            if ((nx !== 0 && dx === -nx) || (ny !== 0 && dy === -ny)) return;
+            dx = nx; dy = ny;
+        };
+
+        document.getElementById('up').onclick = () => setDir(0, -1);
+        document.getElementById('down').onclick = () => setDir(0, 1);
+        document.getElementById('left').onclick = () => setDir(-1, 0);
+        document.getElementById('right').onclick = () => setDir(1, 0);
+
+        document.addEventListener('keydown', e => {
+            const keys = {ArrowUp: [0,-1], ArrowDown: [0,1], ArrowLeft: [-1,0], ArrowRight: [1,0]};
+            if (keys[e.key]) setDir(...keys[e.key]);
+        });
+
+        placeFood();
+        gameInterval = setInterval(update, 150);
+    </script>
+</body>
+</html>
+
